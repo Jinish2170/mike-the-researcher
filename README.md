@@ -34,6 +34,82 @@ Mike      → your machine, your LLM, your sources, your data
 
 ---
 
+## 📸 Dashboard
+
+<div align="center">
+
+<!-- Drop a real screenshot at docs/dashboard.png and this will render. -->
+<img src="docs/dashboard.png" alt="Mike the Researcher dashboard" width="820" onerror="this.style.display='none'" />
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  [M]  Mike the Researcher                                           │
+│       AI research assistant — searches the web, cites every claim   │
+├─────────────────────────────────────────────────────────────────────┤
+│  RESEARCH QUESTION                              DEPTH               │
+│  ┌──────────────────────────────────────────┐  ┌──────────────┐    │
+│  │ what is retrieval-augmented generation?  │  │ Standard ▾   │    │
+│  └──────────────────────────────────────────┘  └──────────────┘    │
+│                                                       [ Research ] │
+├─────────────────────────────────────────────────────────────────────┤
+│  [search]    Searching the web for: what is RAG...                  │
+│  [fetch]     Reading https://en.wikipedia.org/wiki/RAG              │
+│  [extract]   Extracted 14,820 chars from ibm.com                    │
+│  [synthesize] Synthesizing brief with meta/llama-3.3-70b-instruct   │
+│  [done]      Research complete in 24,102ms                          │
+├─────────────────────────────────────────────────────────────────────┤
+│  [ Brief ] [ Sources (6) ] [ History ]               ⬇ Export JSON  │
+├─────────────────────────────────────────────────────────────────────┤
+│   6 sources    48,526 chars    24.1s    [ medium ] confidence       │
+│                                                                     │
+│   SUMMARY                                                           │
+│   Retrieval-augmented generation (RAG) is a technique that          │
+│   enables LLMs to retrieve and incorporate new information from     │
+│   external data sources [1]. ...                                    │
+│                                                                     │
+│   KEY POINTS                                                        │
+│   ▸ RAG enables LLMs to retrieve external information [1]           │
+│   ▸ RAG reduces retraining costs and computational expense [1]      │
+│   ▸ Used in search, Q&A, customer-support chatbots [2]              │
+│                                                                     │
+│   FOLLOW-UPS  (click to set as next query)                          │
+│   ▸ What are the limitations and potential drawbacks of RAG?        │
+│   ▸ How does RAG handle conflicting information across sources?     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+</div>
+
+---
+
+## 🎬 Example output
+
+Query: `what is retrieval-augmented generation in one paragraph` · depth `quick`
+Backed by 3 sources · 18.0s · `meta/llama-3.3-70b-instruct` · confidence **medium**
+
+> Retrieval-augmented generation (RAG) is a technique that enables large language models (LLMs) to retrieve and incorporate new information from external data sources **[1]**. With RAG, LLMs first refer to a specified set of documents, then respond to user queries **[1]**. This allows LLMs to use domain-specific and/or updated information that is not available in the training data **[2]**. RAG improves LLMs by incorporating information retrieval before generating responses **[3]**, and reduces the need to retrain LLMs with new data, saving on computational and financial costs **[1]**. According to IBM, RAG empowers organizations to avoid high retraining costs when adapting generative AI models to domain-specific use cases **[3]**.
+
+**Key points** Mike pulled out:
+- RAG enables LLMs to retrieve and incorporate new information from external data sources **[1]**
+- RAG improves LLMs by incorporating information retrieval before generating responses **[3]**
+- RAG reduces the need to retrain LLMs with new data, saving on computational and financial costs **[1]**
+- RAG can be used in search engines, question-answering systems, and customer-support chatbots **[2]**
+- RAG allows LLMs to include sources in their responses, providing greater transparency and verifiability **[1]**
+
+**Follow-ups** Mike suggested:
+- What are the limitations and potential drawbacks of using RAG?
+- How does RAG handle conflicting or inconsistent information in external sources?
+- What are the potential applications of RAG in healthcare and finance?
+
+**Sources** Mike actually read end-to-end:
+1. [Retrieval-augmented generation — Wikipedia](https://en.wikipedia.org/wiki/Retrieval-augmented_generation)
+2. [What is Retrieval Augmented Generation (RAG)? — Databricks](https://www.databricks.com/blog/what-is-retrieval-augmented-generation)
+3. [What is RAG (Retrieval Augmented Generation)? — IBM](https://www.ibm.com/think/topics/retrieval-augmented-generation)
+
+Every `[n]` in the summary maps to a real source Mike fetched and read — no orphaned claims.
+
+---
+
 ## ✨ Features
 
 | | |
