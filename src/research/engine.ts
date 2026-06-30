@@ -1,7 +1,8 @@
 import { CONFIG } from '../config';
 import { searchWeb } from '../search';
 import { searchSemanticScholar } from '../search/academic';
-import { extractPage, domainOf, selectRelevantContent } from '../extract/readability';
+import { domainOf, selectRelevantContent } from '../extract/readability';
+import { smartExtract, deduplicateSources, enrichWithMetadata } from '../extract/tools';
 import { fetchWithRetry } from '../extract/retry';
 import { getModelName } from '../llm/client';
 import { ResearchDepth, ResearchRecord, ResearchBrief, Source, SearchResult, ProgressHandler } from '../types';
@@ -103,8 +104,8 @@ async function fetchAndBuildSources(
       onProgress?.({ phase: 'fetch', message: `Reading ${r.url}` });
 
       try {
-        const page = await fetchWithRetry(
-          () => extractPage(r.url),
+        const extracted = await fetchWithRetry(
+          () => smartExtract(r.url, query),
           {
             maxRetries: 1,
             baseDelayMs: 1000,
@@ -113,15 +114,19 @@ async function fetchAndBuildSources(
           }
         );
 
-        const relevantText = selectRelevantContent(page.textContent, query, CONFIG.search.maxContentChars);
+        const relevantText = selectRelevantContent(extracted.textContent, query, CONFIG.search.maxContentChars);
         const charCount = relevantText.length;
+        const toolLabel = extracted.toolUsed !== 'readability' ? ` [${extracted.toolUsed}]` : '';
 
-        onProgress?.({ phase: 'extract', message: `Extracted ${charCount.toLocaleString()} chars from ${domain}` });
+        onProgress?.({
+          phase: 'extract',
+          message: `Extracted ${charCount.toLocaleString()} chars from ${domain}${toolLabel}`,
+        });
 
         sources.push({
           id: sourceId,
-          url: page.url,
-          title: page.title,
+          url: extracted.url,
+          title: extracted.title,
           domain,
           snippet: r.snippet,
           extractedText: relevantText,
@@ -286,6 +291,17 @@ export async function research(opts: ResearchOptions): Promise<ResearchRecord> {
       }
 
       iteration++;
+    }
+
+    // ── DEDUPLICATE: Remove near-duplicate content ──────────
+    const dedup = deduplicateSources(allSources.filter((s) => s.status === 'ok'));
+    if (dedup.removed > 0) {
+      onProgress?.({
+        phase: 'extract',
+        message: `Removed ${dedup.removed} near-duplicate source(s)`,
+      });
+      const failedSources = allSources.filter((s) => s.status !== 'ok');
+      allSources = [...dedup.sources, ...failedSources];
     }
 
     // ── SYNTHESIZE ─────────────────────────────────────────────
