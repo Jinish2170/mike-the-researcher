@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import './App.css';
 
 type Depth = 'quick' | 'standard' | 'deep';
 type Tab = 'brief' | 'sources' | 'history';
+type SourceCategory = 'academic' | 'news' | 'official' | 'blog' | 'reference' | 'other';
 
 interface Source {
   id: number;
@@ -14,6 +17,8 @@ interface Source {
   fetchedAt: string;
   status: 'ok' | 'failed' | 'skipped';
   failureReason?: string;
+  qualityScore?: number;
+  category?: SourceCategory;
 }
 
 interface ResearchBrief {
@@ -56,10 +61,69 @@ interface ProgressEvent {
 }
 
 const DEPTHS: { value: Depth; label: string; help: string }[] = [
-  { value: 'quick',    label: 'Quick',    help: '3 sources · ~10s' },
-  { value: 'standard', label: 'Standard', help: '6 sources · ~25s' },
-  { value: 'deep',     label: 'Deep',     help: '10 sources · ~60s' },
+  { value: 'quick', label: 'Quick', help: '3 sources · ~10s · single-pass' },
+  { value: 'standard', label: 'Standard', help: '6 sources · ~25s · GEPA loop' },
+  { value: 'deep', label: 'Deep', help: '10+ sources · ~60s · multi-pass + academic' },
 ];
+
+const CATEGORY_LABELS: Record<SourceCategory, string> = {
+  academic: 'Academic',
+  news: 'News',
+  official: 'Official',
+  blog: 'Blog',
+  reference: 'Reference',
+  other: 'Web',
+};
+
+function QualityDot({ score }: { score?: number }) {
+  if (score == null) return null;
+  const cls = score >= 0.6 ? 'high' : score >= 0.35 ? 'medium' : 'low';
+  return <span className={`quality-dot ${cls}`} title={`Quality: ${Math.round(score * 100)}%`} />;
+}
+
+function CategoryBadge({ category }: { category?: SourceCategory }) {
+  if (!category) return null;
+  return <span className={`category-badge cat-${category}`}>{CATEGORY_LABELS[category]}</span>;
+}
+
+function SkeletonBlock({ lines = 3 }: { lines?: number }) {
+  return (
+    <div className="skeleton-block">
+      {Array.from({ length: lines }).map((_, i) => (
+        <div key={i} className="skeleton" style={{ width: i === lines - 1 ? '60%' : '100%' }} />
+      ))}
+    </div>
+  );
+}
+
+function CitedMarkdown({ text, sources }: { text: string; sources: Source[] }) {
+  const processed = text.replace(/\[(\d+(?:\s*,\s*\d+)*)\]/g, (match, nums: string) => {
+    const ids = nums.split(/\s*,\s*/);
+    return ids
+      .map((n: string) => {
+        const src = sources.find((s) => s.id === parseInt(n));
+        const url = src?.url || '#';
+        const title = src?.title || `Source ${n}`;
+        return `[<sup>${n}</sup>](${url} "${title}")`;
+      })
+      .join('');
+  });
+
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        a: ({ href, title, children }) => (
+          <a href={href} target="_blank" rel="noreferrer" title={title || undefined} className="cite-link">
+            {children}
+          </a>
+        ),
+      }}
+    >
+      {processed}
+    </ReactMarkdown>
+  );
+}
 
 function App() {
   const [query, setQuery] = useState('');
@@ -70,8 +134,10 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>('brief');
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const progressEndRef = useRef<HTMLDivElement>(null);
 
-  const loadHistory = async () => {
+  const loadHistory = useCallback(async () => {
     try {
       const res = await fetch('/api/researches?limit=50');
       if (!res.ok) return;
@@ -80,11 +146,15 @@ function App() {
     } catch {
       /* silent */
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (tab === 'history') loadHistory();
-  }, [tab]);
+  }, [tab, loadHistory]);
+
+  useEffect(() => {
+    progressEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [progress]);
 
   const runResearch = async () => {
     if (!query.trim()) return;
@@ -167,34 +237,13 @@ function App() {
     URL.revokeObjectURL(url);
   };
 
-  const renderSummary = (text: string) => {
-    // Linkify citations like [1], [2,3]
-    const parts = text.split(/(\[\d+(?:\s*,\s*\d+)*\])/g);
-    return parts.map((part, i) => {
-      const m = part.match(/^\[(\d+(?:\s*,\s*\d+)*)\]$/);
-      if (!m) return <span key={i}>{part}</span>;
-      const nums = m[1].split(/\s*,\s*/).map(Number);
-      return (
-        <span key={i}>
-          {nums.map((n, j) => {
-            const src = result?.sources.find((s) => s.id === n);
-            return (
-              <a
-                key={j}
-                className="cite"
-                href={src?.url || '#'}
-                target="_blank"
-                rel="noreferrer"
-                title={src?.title || `Source ${n}`}
-              >
-                {n}
-              </a>
-            );
-          })}
-        </span>
-      );
-    });
+  const setFollowUp = (q: string) => {
+    setQuery(q);
+    inputRef.current?.focus();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  const okSources = result?.sources.filter((s) => s.status === 'ok') || [];
 
   return (
     <div className="app">
@@ -203,23 +252,33 @@ function App() {
           <span className="logo-icon">M</span>
           <h1>Mike the Researcher</h1>
         </div>
-        <p className="tagline">AI research assistant — searches the web, reads the sources, cites every claim</p>
+        <p className="tagline">
+          Advanced AI research agent — GEPA loop, multi-pass synthesis, cited briefs
+        </p>
       </header>
 
-      <div className="controls">
+      <div className="controls" role="search">
         <div className="input-group">
-          <label>Research question</label>
+          <label htmlFor="research-input">Research question</label>
           <input
+            id="research-input"
+            ref={inputRef}
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && !loading && runResearch()}
-            placeholder='e.g. "what is retrieval-augmented generation and when does it beat fine-tuning?"'
+            placeholder='e.g. "compare RAG vs fine-tuning for enterprise LLMs"'
+            aria-label="Research question"
           />
         </div>
         <div className="select-group">
-          <label>Depth</label>
-          <select value={depth} onChange={(e) => setDepth(e.target.value as Depth)}>
+          <label htmlFor="depth-select">Depth</label>
+          <select
+            id="depth-select"
+            value={depth}
+            onChange={(e) => setDepth(e.target.value as Depth)}
+            aria-label="Research depth"
+          >
             {DEPTHS.map((d) => (
               <option key={d.value} value={d.value}>
                 {d.label} — {d.help}
@@ -227,48 +286,109 @@ function App() {
             ))}
           </select>
         </div>
-        <button onClick={runResearch} disabled={loading || !query.trim()} className="scan-btn">
+        <button
+          onClick={runResearch}
+          disabled={loading || !query.trim()}
+          className="scan-btn"
+          aria-label="Start research"
+        >
           {loading ? 'Researching...' : 'Research'}
         </button>
       </div>
 
-      {error && <div className="error">{error}</div>}
-
-      {loading && progress.length > 0 && (
-        <div className="progress">
-          {progress.map((p, i) => (
-            <div key={i} className="progress-line">
-              <span className="phase">{p.phase}</span>
-              {p.message}
-            </div>
-          ))}
+      {error && (
+        <div className="error" role="alert">
+          {error}
         </div>
       )}
 
-      <div className="tabs">
-        <button className={tab === 'brief' ? 'active' : ''} onClick={() => setTab('brief')}>
+      {loading && progress.length > 0 && (
+        <div className="progress" aria-live="polite" aria-label="Research progress">
+          {progress.map((p, i) => (
+            <div key={i} className="progress-line">
+              <span className={`phase phase-${p.phase}`}>{p.phase}</span>
+              {p.message}
+            </div>
+          ))}
+          <div ref={progressEndRef} />
+        </div>
+      )}
+
+      <div className="tabs" role="tablist">
+        <button
+          role="tab"
+          aria-selected={tab === 'brief'}
+          className={tab === 'brief' ? 'active' : ''}
+          onClick={() => setTab('brief')}
+        >
           Brief
         </button>
-        <button className={tab === 'sources' ? 'active' : ''} onClick={() => setTab('sources')}>
+        <button
+          role="tab"
+          aria-selected={tab === 'sources'}
+          className={tab === 'sources' ? 'active' : ''}
+          onClick={() => setTab('sources')}
+        >
           Sources{result ? ` (${result.sources.length})` : ''}
         </button>
-        <button className={tab === 'history' ? 'active' : ''} onClick={() => setTab('history')}>
+        <button
+          role="tab"
+          aria-selected={tab === 'history'}
+          className={tab === 'history' ? 'active' : ''}
+          onClick={() => setTab('history')}
+        >
           History
         </button>
         {result && (
-          <button onClick={exportJSON} className="export-btn">
-            ⬇ Export JSON
+          <button onClick={exportJSON} className="export-btn" aria-label="Export as JSON">
+            Export JSON
           </button>
         )}
       </div>
 
       {tab === 'brief' && (
-        <div className="tab-content">
+        <div className="tab-content" role="tabpanel">
           {!result && !loading && (
-            <p style={{ color: 'var(--text-secondary)' }}>
-              Ask Mike a question above. He'll search the web, read the top sources, and synthesize a cited brief.
-            </p>
+            <div className="empty-state">
+              <p>Ask Mike a question. He uses a <strong>GEPA research loop</strong> (Generate-Evaluate-Plan-Act) to iteratively search, evaluate coverage gaps, and fill them before synthesis.</p>
+              <div className="depth-info">
+                <div className="depth-card">
+                  <strong>Quick</strong>
+                  <span>Single-pass synthesis, 3 sources</span>
+                </div>
+                <div className="depth-card">
+                  <strong>Standard</strong>
+                  <span>Multi-query + gap analysis, 6 sources</span>
+                </div>
+                <div className="depth-card">
+                  <strong>Deep</strong>
+                  <span>Multi-pass fact extraction, academic search, 10+ sources</span>
+                </div>
+              </div>
+            </div>
           )}
+
+          {loading && !result && (
+            <div className="skeleton-container">
+              <div className="stats-bar">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="stat">
+                    <div className="skeleton" style={{ width: '40%', height: '1.6rem', margin: '0 auto' }} />
+                    <div className="skeleton" style={{ width: '60%', height: '0.7rem', margin: '0.4rem auto 0' }} />
+                  </div>
+                ))}
+              </div>
+              <div className="summary-box section">
+                <h3>Summary</h3>
+                <SkeletonBlock lines={5} />
+              </div>
+              <div className="summary-box section">
+                <h3>Key points</h3>
+                <SkeletonBlock lines={4} />
+              </div>
+            </div>
+          )}
+
           {result && (
             <>
               <div className="stats-bar">
@@ -296,7 +416,9 @@ function App() {
 
               <div className="summary-box section">
                 <h3>Summary</h3>
-                <div className="summary-text">{renderSummary(result.brief.summary)}</div>
+                <div className="summary-text">
+                  <CitedMarkdown text={result.brief.summary} sources={result.sources} />
+                </div>
               </div>
 
               {result.brief.keyPoints.length > 0 && (
@@ -304,7 +426,9 @@ function App() {
                   <h3>Key points</h3>
                   <ul className="bullets">
                     {result.brief.keyPoints.map((p, i) => (
-                      <li key={i}>{renderSummary(p)}</li>
+                      <li key={i}>
+                        <CitedMarkdown text={p} sources={result.sources} />
+                      </li>
                     ))}
                   </ul>
                 </div>
@@ -313,15 +437,14 @@ function App() {
               {result.brief.followUpQuestions.length > 0 && (
                 <div className="summary-box section">
                   <h3>Follow-up questions</h3>
-                  <ul className="bullets">
+                  <ul className="bullets follow-ups">
                     {result.brief.followUpQuestions.map((q, i) => (
                       <li
                         key={i}
-                        style={{ cursor: 'pointer' }}
-                        onClick={() => {
-                          setQuery(q);
-                          window.scrollTo({ top: 0, behavior: 'smooth' });
-                        }}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setFollowUp(q)}
+                        onKeyDown={(e) => e.key === 'Enter' && setFollowUp(q)}
                         title="Click to set as next query"
                       >
                         {q}
@@ -332,7 +455,7 @@ function App() {
               )}
 
               {result.brief.reasoning && (
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '1rem' }}>
+                <p className="confidence-reasoning">
                   <strong>Confidence reasoning:</strong> {result.brief.reasoning}
                 </p>
               )}
@@ -342,35 +465,62 @@ function App() {
       )}
 
       {tab === 'sources' && (
-        <div className="tab-content">
+        <div className="tab-content" role="tabpanel">
           {!result && <p style={{ color: 'var(--text-secondary)' }}>Run a query to see sources.</p>}
-          {result &&
-            result.sources.map((s) => (
-              <div key={s.id} className={`source-card ${s.status === 'failed' ? 'failed' : ''}`}>
-                <div className="source-head">
-                  <span className="source-num">{s.id}</span>
-                  <span className="source-title">{s.title}</span>
-                  <span className="source-domain">{s.domain}</span>
-                </div>
-                <a className="source-link" href={s.url} target="_blank" rel="noreferrer">
-                  {s.url}
-                </a>
-                {s.status === 'failed' ? (
-                  <p className="source-snippet" style={{ color: 'var(--danger)' }}>
-                    Could not extract: {s.failureReason}
-                  </p>
-                ) : (
-                  <p className="source-snippet">
-                    {s.snippet} <span style={{ color: 'var(--text-secondary)' }}>· {s.charCount.toLocaleString()} chars</span>
-                  </p>
+          {result && (
+            <>
+              <div className="source-summary-bar">
+                <span>{okSources.length} fetched</span>
+                <span>{result.stats.sourcesFailed} failed</span>
+                {okSources.some((s) => s.category) && (
+                  <span className="category-breakdown">
+                    {Object.entries(
+                      okSources.reduce((acc, s) => {
+                        const cat = s.category || 'other';
+                        acc[cat] = (acc[cat] || 0) + 1;
+                        return acc;
+                      }, {} as Record<string, number>)
+                    )
+                      .sort(([, a], [, b]) => b - a)
+                      .map(([cat, count]) => `${count} ${cat}`)
+                      .join(' · ')}
+                  </span>
                 )}
               </div>
-            ))}
+              {result.sources.map((s) => (
+                <div key={s.id} className={`source-card ${s.status === 'failed' ? 'failed' : ''}`}>
+                  <div className="source-head">
+                    <span className="source-num">{s.id}</span>
+                    <QualityDot score={s.qualityScore} />
+                    <span className="source-title">{s.title}</span>
+                    <CategoryBadge category={s.category} />
+                    <span className="source-domain">{s.domain}</span>
+                  </div>
+                  <a className="source-link" href={s.url} target="_blank" rel="noreferrer">
+                    {s.url}
+                  </a>
+                  {s.status === 'failed' ? (
+                    <p className="source-snippet" style={{ color: 'var(--danger)' }}>
+                      Could not extract: {s.failureReason}
+                    </p>
+                  ) : (
+                    <p className="source-snippet">
+                      {s.snippet}{' '}
+                      <span style={{ color: 'var(--text-secondary)' }}>
+                        · {s.charCount.toLocaleString()} chars
+                        {s.qualityScore != null && ` · score ${Math.round(s.qualityScore * 100)}%`}
+                      </span>
+                    </p>
+                  )}
+                </div>
+              ))}
+            </>
+          )}
         </div>
       )}
 
       {tab === 'history' && (
-        <div className="tab-content">
+        <div className="tab-content" role="tabpanel">
           {history.length === 0 && (
             <p style={{ color: 'var(--text-secondary)' }}>
               No past research yet. Run a query to start building history.
@@ -391,7 +541,9 @@ function App() {
                 {history.map((h) => (
                   <tr key={h.id}>
                     <td>{h.query}</td>
-                    <td>{h.depth}</td>
+                    <td>
+                      <span className={`depth-badge depth-${h.depth}`}>{h.depth}</span>
+                    </td>
                     <td>{h.stats.sourcesFetched}</td>
                     <td style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
                       {new Date(h.createdAt).toLocaleString()}
