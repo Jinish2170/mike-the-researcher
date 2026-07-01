@@ -70,18 +70,33 @@ export function computeFingerprint(text: string): string {
   return simhash(text).toString(16).padStart(16, '0');
 }
 
-export function jaccardSimilarity(text1: string, text2: string): number {
-  const grams1 = ngrams(tokenize(text1), 3);
-  const grams2 = ngrams(tokenize(text2), 3);
-
-  if (grams1.size === 0 || grams2.size === 0) return 0;
-
+function jaccardOnSets(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0;
   let intersection = 0;
-  for (const g of grams1) {
-    if (grams2.has(g)) intersection++;
+  for (const g of a) {
+    if (b.has(g)) intersection++;
   }
+  return intersection / (a.size + b.size - intersection);
+}
 
-  return intersection / (grams1.size + grams2.size - intersection);
+export function jaccardSimilarity(text1: string, text2: string): number {
+  const tokens1 = tokenize(text1);
+  const tokens2 = tokenize(text2);
+
+  // Multi-granularity: combine unigram (word overlap) and bigram (phrase overlap)
+  const uni1 = new Set(tokens1);
+  const uni2 = new Set(tokens2);
+  const bi1 = ngrams(tokens1, 2);
+  const bi2 = ngrams(tokens2, 2);
+  const tri1 = ngrams(tokens1, 3);
+  const tri2 = ngrams(tokens2, 3);
+
+  const uniSim = jaccardOnSets(uni1, uni2);
+  const biSim = jaccardOnSets(bi1, bi2);
+  const triSim = jaccardOnSets(tri1, tri2);
+
+  // Weighted combination: unigrams catch paraphrases, trigrams catch exact copies
+  return uniSim * 0.4 + biSim * 0.35 + triSim * 0.25;
 }
 
 export function areSimilar(text1: string, text2: string, threshold = 0.4): boolean {

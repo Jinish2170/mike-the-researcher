@@ -54,7 +54,7 @@ async function fetchRawContent(owner: string, repo: string, path: string, ref = 
 }
 
 async function fetchReadme(owner: string, repo: string): Promise<string | null> {
-  for (const name of ['README.md', 'readme.md', 'README.rst', 'README', 'README.txt']) {
+  for (const name of ['README.md', 'readme.md', 'Readme.md', 'README.rst', 'README', 'README.txt', 'readme.rst']) {
     const content = await fetchRawContent(owner, repo, name);
     if (content) return content;
   }

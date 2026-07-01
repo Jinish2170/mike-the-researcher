@@ -36,7 +36,7 @@ function parseSOUrl(url: string): { site: string; questionId: string } | null {
 }
 
 function stripHtml(html: string): string {
-  return html
+  const result = html
     .replace(/<pre><code[^>]*>([\s\S]*?)<\/code><\/pre>/gi, (_, code) => {
       return '\n```\n' + decodeHtmlEntities(code) + '\n```\n';
     })
@@ -49,6 +49,7 @@ function stripHtml(html: string): string {
     .replace(/<\/?[^>]+(>|$)/g, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+  return decodeHtmlEntities(result);
 }
 
 function decodeHtmlEntities(text: string): string {

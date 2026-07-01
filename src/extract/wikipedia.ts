@@ -79,7 +79,7 @@ export async function extractWikipedia(url: string, _query: string): Promise<Ext
   const structuredParts: string[] = [];
 
   if (wiki.sections.length > 0) {
-    const skipSections = /references|see also|external links|further reading|notes|bibliography/i;
+    const skipSections = /references|see[_ ]also|external[_ ]links|further[_ ]reading|notes|bibliography/i;
     for (const sec of wiki.sections) {
       if (skipSections.test(sec.title)) continue;
       structuredParts.push(`## ${sec.title}\n${sec.content}`);

@@ -13,6 +13,8 @@
     "start": "npm run api",
     "start:all": "concurrently \"npm run api\" \"npm run frontend:dev\"",
     "typecheck": "tsc --noEmit",
+    "test": "ts-node src/extract/__tests__/tools.test.ts && ts-node src/extract/__tests__/parsers.test.ts",
+    "test:live": "ts-node src/extract/__tests__/github-live.test.ts && ts-node src/extract/__tests__/extractors.test.ts",
     "lint": "eslint src/**/*.ts"
   },
   "keywords": [
