@@ -40,6 +40,18 @@ export async function chat(opts: ChatOptions): Promise<string> {
   return response.choices[0]?.message?.content?.trim() || '';
 }
 
+export async function chatWithRetry(opts: ChatOptions): Promise<string> {
+  const { fetchWithRetry } = await import('../extract/retry');
+  return fetchWithRetry(() => chat(opts), {
+    maxRetries: 2,
+    baseDelayMs: 2000,
+    shouldRetry: (err) => {
+      const msg = err.message.toLowerCase();
+      return msg.includes('rate') || msg.includes('429') || msg.includes('500') || msg.includes('timeout');
+    },
+  });
+}
+
 export function getModelName(): string {
   return CONFIG.llm.model;
 }

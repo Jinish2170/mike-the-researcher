@@ -10,6 +10,8 @@ export interface SearchResult {
   source: 'duckduckgo' | 'tavily';
 }
 
+export type SourceCategory = 'academic' | 'news' | 'official' | 'blog' | 'reference' | 'other';
+
 export interface Source {
   id: number;                // citation number (1-based)
   url: string;
@@ -21,6 +23,8 @@ export interface Source {
   fetchedAt: string;
   status: 'ok' | 'failed' | 'skipped';
   failureReason?: string;
+  qualityScore?: number;     // 0-1 composite quality score
+  category?: SourceCategory; // source type classification
 }
 
 export interface Citation {
